@@ -161,6 +161,9 @@ namespace WarehouseSimulation.Agents
         /// </summary>
         public override void OnEpisodeBegin()
         {
+            // Force inspector override
+            MaxStep = WarehouseConstants.MaxEpisodeSteps;
+
             Debug.Log($"[Robot {RobotIndex}] Episode BEGIN (StepCount was {StepCount})");
 
             // Reset state
