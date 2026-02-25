@@ -52,7 +52,7 @@ namespace WarehouseSimulation.Managers
 
         [Header("Simulation Settings")]
         [SerializeField] private int robotCount = WarehouseConstants.DefaultRobotCount;
-        [SerializeField] private float timeScale = 1f;
+        [SerializeField] private float timeScale = 20f; // 20x speed for training
         [SerializeField] private Core.SimulationMode simulationMode = Core.SimulationMode.Inference;
 
         [Header("Robot Prefab")]
@@ -202,7 +202,7 @@ namespace WarehouseSimulation.Managers
                 behaviorParams.BehaviorName = "RobotAgent";
                 behaviorParams.BrainParameters.VectorObservationSize = 21;
                 behaviorParams.BrainParameters.NumStackedVectorObservations = 1;
-                behaviorParams.BrainParameters.ActionSpec = new Unity.MLAgents.Actuators.ActionSpec(3, new int[0]);
+                behaviorParams.BrainParameters.ActionSpec = new ActionSpec(3, new int[0]);
                 behaviorParams.BehaviorType = BehaviorType.Default;
 
                 // Add DecisionRequester before Agent so it's ready when Agent initializes
@@ -214,6 +214,10 @@ namespace WarehouseSimulation.Managers
 
                 agent.RobotIndex = i;
                 agent.Initialize(taskManager, robotCoordinator, inventoryManager);
+                
+                // Ensure MaxStep is set for episode termination
+                agent.MaxStep = WarehouseConstants.MaxEpisodeSteps;
+                Debug.Log($"[GameManager] Robot_{i} MaxStep={agent.MaxStep}");
 
                 // Register with coordinator
                 robotCoordinator.RegisterRobot(agent);
@@ -241,11 +245,27 @@ namespace WarehouseSimulation.Managers
             // Set robot layer for collision detection
             robot.tag = "Robot";
 
-            // Apply initial material
+            // Modify the primitive's existing material (already has correct URP shader)
             Renderer rend = robot.GetComponent<Renderer>();
-            Material mat = new Material(Shader.Find("Standard"));
-            mat.color = new Color(0.3f, 0.3f, 0.35f); // Dark metallic base
+            Material mat = new Material(rend.sharedMaterial); // Clone the default URP mat
+            mat.color = new Color(0.25f, 0.28f, 0.32f); // Dark metallic base
+            mat.SetColor("_BaseColor", mat.color);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0.7f);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.6f);
             rend.material = mat;
+
+            // Direction indicator (small cube at front to show robot facing)
+            GameObject dirIndicator = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            dirIndicator.name = "DirectionIndicator";
+            dirIndicator.transform.SetParent(robot.transform);
+            dirIndicator.transform.localPosition = new Vector3(0, 0.2f, 0.6f);
+            dirIndicator.transform.localScale = new Vector3(0.3f, 0.15f, 0.15f);
+            Destroy(dirIndicator.GetComponent<Collider>());
+            Renderer dirRend = dirIndicator.GetComponent<Renderer>();
+            Material dirMat = new Material(dirRend.sharedMaterial);
+            dirMat.color = new Color(0.1f, 0.7f, 1f); // Cyan indicator
+            dirMat.SetColor("_BaseColor", dirMat.color);
+            dirRend.material = dirMat;
 
             // Status light (small sphere on top)
             GameObject statusLight = GameObject.CreatePrimitive(PrimitiveType.Sphere);

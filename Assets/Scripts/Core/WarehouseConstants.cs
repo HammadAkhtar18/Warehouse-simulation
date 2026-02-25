@@ -98,16 +98,16 @@ namespace WarehouseSimulation.Core
         /// </summary>
         public const float RewardTaskComplete = 10f;
         public const float RewardProgressPerUnit = 0.1f;   // Per unit distance moved toward target
-        public const float PenaltyTimestep = -0.01f;        // Per decision step
-        public const float PenaltyRobotCollision = -5f;
-        public const float PenaltyObstacleCollision = -3f;
+        public const float PenaltyTimestep = -0.005f;       // Per decision step (gentle urgency)
+        public const float PenaltyRobotCollision = -2f;     // Proximity collision (reduced for exploration)
+        public const float PenaltyObstacleCollision = -1f;  // Wall/shelf collision
         public const float PenaltyIdle = -0.5f;
-        public const float IdleTimeThreshold = 5f;          // Seconds before idle penalty kicks in
+        public const float IdleTimeThreshold = 3f;           // Seconds before idle penalty kicks in
         public const float RewardEfficiencyBonus = 3f;       // Bonus for completing in near-optimal time
-        public const float RewardPickup = 1f;                // Small reward for reaching pickup point
+        public const float RewardPickup = 2f;                // Reward for reaching pickup point
         
         /// <summary>Maximum episode length for ML training (steps).</summary>
-        public const int MaxEpisodeSteps = 5000;
+        public const int MaxEpisodeSteps = 1000;
 
         // ──────────────────────────────────────────────
         // OBSERVATION SPACE PARAMETERS
@@ -138,15 +138,15 @@ namespace WarehouseSimulation.Core
         // COLORS
         // ──────────────────────────────────────────────
         
-        public static readonly Color FloorColor = new Color(0.85f, 0.85f, 0.82f);
-        public static readonly Color WallColor = new Color(0.6f, 0.6f, 0.65f);
+        public static readonly Color FloorColor = new Color(0.78f, 0.78f, 0.75f);     // Light concrete
+        public static readonly Color WallColor = new Color(0.5f, 0.52f, 0.58f);      // Cool industrial gray
         
-        public static readonly Color StockLowColor = new Color(0.9f, 0.2f, 0.2f);     // Red
-        public static readonly Color StockMediumColor = new Color(0.95f, 0.8f, 0.2f);  // Yellow
-        public static readonly Color StockHighColor = new Color(0.2f, 0.8f, 0.3f);     // Green
+        public static readonly Color StockLowColor = new Color(0.95f, 0.25f, 0.2f);   // Red
+        public static readonly Color StockMediumColor = new Color(1f, 0.75f, 0.1f);   // Amber
+        public static readonly Color StockHighColor = new Color(0.15f, 0.85f, 0.35f); // Green
 
-        public static readonly Color DeliveryZoneColor = new Color(0.2f, 0.85f, 0.4f, 0.6f);
-        public static readonly Color DockZoneColor = new Color(0.2f, 0.5f, 0.9f, 0.6f);
+        public static readonly Color DeliveryZoneColor = new Color(0.15f, 0.9f, 0.45f, 0.5f);  // Bright green
+        public static readonly Color DockZoneColor = new Color(0.2f, 0.55f, 0.95f, 0.5f);      // Bright blue
 
         // Robot state colors
         public static readonly Color RobotIdle = Color.green;

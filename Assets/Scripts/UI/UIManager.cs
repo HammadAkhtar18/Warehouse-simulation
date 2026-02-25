@@ -80,31 +80,45 @@ namespace WarehouseSimulation.UI
         {
             if (stylesInitialized) return;
 
+            // Glassmorphism-style panel background
+            boxStyle = new GUIStyle(GUI.skin.box)
+            {
+                normal = { background = MakeGradientTexture(2, 64,
+                    new Color(0.08f, 0.10f, 0.16f, 0.92f),
+                    new Color(0.06f, 0.08f, 0.14f, 0.88f)) }
+            };
+
             buttonStyle = new GUIStyle(GUI.skin.button)
             {
-                fontSize = 14,
+                fontSize = 13,
                 fontStyle = FontStyle.Bold,
-                fixedHeight = 35,
-                normal = { textColor = Color.white },
-                hover = { textColor = Color.cyan }
+                fixedHeight = 32,
+                normal = {
+                    textColor = Color.white,
+                    background = MakeTexture(2, 2, new Color(0.15f, 0.35f, 0.65f, 0.9f))
+                },
+                hover = {
+                    textColor = new Color(0.7f, 0.95f, 1f),
+                    background = MakeTexture(2, 2, new Color(0.2f, 0.45f, 0.8f, 0.95f))
+                },
+                active = {
+                    textColor = Color.white,
+                    background = MakeTexture(2, 2, new Color(0.1f, 0.25f, 0.5f, 1f))
+                }
             };
 
             labelStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 13,
-                normal = { textColor = new Color(0.85f, 0.9f, 1f) }
+                normal = { textColor = new Color(0.75f, 0.82f, 0.95f) }
             };
 
             headerStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 16,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.9f, 0.95f, 1f) }
-            };
-
-            boxStyle = new GUIStyle(GUI.skin.box)
-            {
-                normal = { background = MakeTexture(2, 2, new Color(0.1f, 0.12f, 0.18f, 0.9f)) }
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = new Color(0.4f, 0.85f, 1f) }
             };
 
             graphBoxStyle = new GUIStyle(GUI.skin.box)
@@ -343,6 +357,19 @@ namespace WarehouseSimulation.UI
                 pixels[i] = color;
             Texture2D texture = new Texture2D(width, height);
             texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
+        }
+
+        private Texture2D MakeGradientTexture(int width, int height, Color topColor, Color bottomColor)
+        {
+            Texture2D texture = new Texture2D(width, height);
+            for (int y = 0; y < height; y++)
+            {
+                Color c = Color.Lerp(bottomColor, topColor, (float)y / height);
+                for (int x = 0; x < width; x++)
+                    texture.SetPixel(x, y, c);
+            }
             texture.Apply();
             return texture;
         }

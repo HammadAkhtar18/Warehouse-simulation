@@ -78,8 +78,11 @@ namespace WarehouseSimulation.Agents
         {
             if (statusLightRenderer != null)
             {
-                statusMaterial = new Material(Shader.Find("Standard"));
+                // Clone the renderer's existing material (already has correct URP shader)
+                statusMaterial = new Material(statusLightRenderer.sharedMaterial);
                 statusMaterial.EnableKeyword("_EMISSION");
+                if (statusMaterial.HasProperty("_Metallic")) statusMaterial.SetFloat("_Metallic", 0.3f);
+                if (statusMaterial.HasProperty("_Smoothness")) statusMaterial.SetFloat("_Smoothness", 0.8f);
                 statusLightRenderer.material = statusMaterial;
             }
 
@@ -88,12 +91,28 @@ namespace WarehouseSimulation.Agents
                 Renderer carryRend = carryIndicator.GetComponent<Renderer>();
                 if (carryRend != null)
                 {
-                    carryMaterial = new Material(Shader.Find("Standard"));
-                    carryMaterial.color = new Color(0.8f, 0.5f, 0.2f); // Brown box
+                    carryMaterial = new Material(carryRend.sharedMaterial);
+                    carryMaterial.color = new Color(0.7f, 0.45f, 0.15f); // Brown box
+                    carryMaterial.SetColor("_BaseColor", carryMaterial.color);
+                    if (carryMaterial.HasProperty("_Metallic")) carryMaterial.SetFloat("_Metallic", 0.1f);
+                    if (carryMaterial.HasProperty("_Smoothness")) carryMaterial.SetFloat("_Smoothness", 0.3f);
                     carryRend.material = carryMaterial;
                 }
             }
         }
+
+        private void Update()
+        {
+            // Gentle pulsing glow on the status light
+            if (statusMaterial != null)
+            {
+                float pulse = 1f + 0.3f * Mathf.Sin(Time.time * 3f + RobotIndex * 0.5f);
+                Color baseColor = GetStateColor(lastState);
+                statusMaterial.SetColor("_EmissionColor", baseColor * pulse);
+            }
+        }
+
+        private int RobotIndex => GetComponent<RobotAgent>()?.RobotIndex ?? 0;
 
         private void SetupPathLine()
         {

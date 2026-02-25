@@ -104,7 +104,7 @@ namespace WarehouseSimulation.Environment
 
             // Set floor material
             Renderer rend = floor.GetComponent<Renderer>();
-            rend.material = CreateMaterial(WarehouseConstants.FloorColor);
+            rend.material = CreateMaterial(WarehouseConstants.FloorColor, 0f, 0.3f);
             
             // Floor is static for NavMesh baking
             floor.isStatic = true;
@@ -133,10 +133,10 @@ namespace WarehouseSimulation.Environment
             wall.transform.position = position;
             wall.transform.localScale = scale;
             wall.isStatic = true;
-            wall.tag = "Obstacle";
+            SafeSetTag(wall, "Obstacle");
 
             Renderer rend = wall.GetComponent<Renderer>();
-            rend.material = CreateMaterial(WarehouseConstants.WallColor);
+            rend.material = CreateMaterial(WarehouseConstants.WallColor, 0.2f, 0.4f);
         }
 
         // ──────────────────────────────────────────────
@@ -200,7 +200,11 @@ namespace WarehouseSimulation.Environment
                 WarehouseConstants.ShelfDepth
             );
             shelf.isStatic = true;
-            shelf.tag = "Shelf";
+            SafeSetTag(shelf, "Shelf");
+
+            // Set shelf material (dark metallic rack)
+            Renderer shelfRend = shelf.GetComponent<Renderer>();
+            shelfRend.material = CreateMaterial(new Color(0.35f, 0.3f, 0.25f), 0.4f, 0.3f);
 
             // Add a NavMesh obstacle so robots path around shelves
             NavMeshObstacle obstacle = shelf.AddComponent<NavMeshObstacle>();
@@ -216,6 +220,10 @@ namespace WarehouseSimulation.Environment
             indicator.transform.SetParent(shelf.transform);
             indicator.transform.localPosition = new Vector3(0, 0.6f, 0);
             indicator.transform.localScale = new Vector3(0.8f, 0.3f, 0.8f);
+
+            // Set indicator material (green by default — updated by Shelf component)
+            Renderer indRend = indicator.GetComponent<Renderer>();
+            indRend.material = CreateMaterial(WarehouseConstants.StockHighColor);
             
             // Remove collider from indicator (visual only)
             Destroy(indicator.GetComponent<Collider>());
@@ -268,17 +276,32 @@ namespace WarehouseSimulation.Environment
             zone.transform.SetParent(warehouseParent);
             zone.transform.position = new Vector3(x, 0.05f, z);
             zone.transform.localScale = new Vector3(size, 0.1f, size);
-            zone.tag = "Zone";
+            SafeSetTag(zone, "Zone");
 
             Renderer rend = zone.GetComponent<Renderer>();
             Material mat = CreateMaterial(color);
-            mat.SetFloat("_Mode", 3); // Transparent mode
             rend.material = mat;
 
             // Zone collider should be a trigger (robots don't physically bump into zones)
             zone.GetComponent<Collider>().isTrigger = true;
 
             return zone;
+        }
+
+        /// <summary>
+        /// Safely sets a tag on a GameObject. If the tag doesn't exist in Unity's
+        /// Tag Manager, logs a warning instead of crashing.
+        /// </summary>
+        private void SafeSetTag(GameObject obj, string tag)
+        {
+            try
+            {
+                obj.tag = tag;
+            }
+            catch (UnityException)
+            {
+                Debug.LogWarning($"[WarehouseBuilder] Tag '{tag}' not defined. Run Warehouse > Setup Scene first.");
+            }
         }
 
         // ──────────────────────────────────────────────
@@ -324,32 +347,52 @@ namespace WarehouseSimulation.Environment
             Debug.Log("[WarehouseBuilder] NavMesh baked successfully");
         }
 
-        // ──────────────────────────────────────────────
-        // UTILITIES
-        // ──────────────────────────────────────────────
+        // Cached reference material from a primitive (guaranteed to have correct URP shader)
+        private static Material _cachedReferenceMaterial;
 
-        /// <summary>Creates a simple colored material.</summary>
-        private Material CreateMaterial(Color color)
+        /// <summary>
+        /// Gets the default URP material by creating a temporary primitive.
+        /// This avoids Shader.Find() which fails at runtime in URP.
+        /// </summary>
+        private static Material GetReferenceMaterial()
         {
-            // Use URP Lit shader if available, fallback to Standard
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null)
-                shader = Shader.Find("Standard");
+            if (_cachedReferenceMaterial == null)
+            {
+                // Create a temporary primitive to capture its default material
+                GameObject temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                _cachedReferenceMaterial = new Material(temp.GetComponent<Renderer>().sharedMaterial);
+                DestroyImmediate(temp);
+            }
+            return _cachedReferenceMaterial;
+        }
 
-            Material mat = new Material(shader);
+        /// <summary>Creates a colored material by cloning the default URP material.</summary>
+        private Material CreateMaterial(Color color, float metallic = 0f, float smoothness = 0.5f)
+        {
+            // Clone the reference material (has the correct URP shader)
+            Material mat = new Material(GetReferenceMaterial());
+
+            // Set color on both Standard and URP properties
             mat.color = color;
+            mat.SetColor("_BaseColor", color);
+
+            // Try setting metallic/smoothness (may not exist on all shaders)
+            if (mat.HasProperty("_Metallic"))
+                mat.SetFloat("_Metallic", metallic);
+            if (mat.HasProperty("_Smoothness"))
+                mat.SetFloat("_Smoothness", smoothness);
 
             // Enable transparency if alpha < 1
             if (color.a < 1f)
             {
-                mat.SetFloat("_Surface", 1); // Transparent for URP
-                mat.SetFloat("_Mode", 3);    // Transparent for Standard
+                if (mat.HasProperty("_Surface"))
+                    mat.SetFloat("_Surface", 1); // Transparent
+
+                mat.SetOverrideTag("RenderType", "Transparent");
                 mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
                 mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
                 mat.SetInt("_ZWrite", 0);
-                mat.DisableKeyword("_ALPHATEST_ON");
-                mat.EnableKeyword("_ALPHABLEND_ON");
-                mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
                 mat.renderQueue = 3000;
             }
 

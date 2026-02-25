@@ -271,6 +271,44 @@ namespace WarehouseSimulation.Managers
             }
         }
 
+        /// <summary>
+        /// Called by RobotAgent at the start of each episode to immediately get a task.
+        /// Finds the nearest pending task and assigns it without waiting for the Update cycle.
+        /// </summary>
+        public void RequestTaskForRobot(RobotAgent robot)
+        {
+            if (pendingTasks.Count == 0) return;
+            if (robot.CurrentTask != null) return;
+
+            // Find nearest pending task
+            TaskData bestTask = null;
+            float bestDist = float.MaxValue;
+
+            foreach (var task in pendingTasks)
+            {
+                float dist = Vector3.Distance(robot.transform.position, task.PickupPosition);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestTask = task;
+                }
+            }
+
+            if (bestTask != null)
+            {
+                bestTask.Status = Core.TaskStatus.Assigned;
+                bestTask.AssignedRobot = robot.gameObject;
+                bestTask.AssignedTime = Time.time;
+
+                robot.AssignTask(bestTask);
+
+                activeTasks.Add(bestTask);
+                pendingTasks.Remove(bestTask);
+
+                OnTaskAssigned?.Invoke(bestTask);
+            }
+        }
+
         // ──────────────────────────────────────────────
         // TASK COMPLETION
         // ──────────────────────────────────────────────

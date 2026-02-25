@@ -123,6 +123,10 @@ namespace WarehouseSimulation.Agents
             visuals = GetComponent<RobotVisuals>();
             rb = GetComponent<Rigidbody>();
 
+            // Set MaxStep so ML-Agents auto-ends episodes
+            // This is the NATIVE way to handle episode length limits
+            MaxStep = WarehouseConstants.MaxEpisodeSteps;
+
             // Configure NavMeshAgent for realistic warehouse robot movement
             ConfigureNavAgent();
         }
@@ -157,6 +161,8 @@ namespace WarehouseSimulation.Agents
         /// </summary>
         public override void OnEpisodeBegin()
         {
+            Debug.Log($"[Robot {RobotIndex}] Episode BEGIN (StepCount was {StepCount})");
+
             // Reset state
             currentState = RobotState.Idle;
             currentTask = null;
@@ -168,15 +174,56 @@ namespace WarehouseSimulation.Agents
             episodeStartTime = Time.time;
             previousDistanceToTarget = float.MaxValue;
 
-            // Reset position (navAgent teleport)
+            // Randomize spawn position for training generalization
+            RandomizePosition();
+
+            // Reset NavAgent
             if (navAgent != null && navAgent.isOnNavMesh)
             {
                 navAgent.ResetPath();
                 navAgent.isStopped = false;
             }
 
+            // Proactively request a task so the robot starts working immediately
+            if (taskManager != null)
+            {
+                taskManager.RequestTaskForRobot(this);
+            }
+
             // Update visuals
             UpdateVisuals();
+        }
+
+        /// <summary>
+        /// Teleports robot to a random valid NavMesh position within the warehouse.
+        /// Ensures diverse training experiences across different starting locations.
+        /// </summary>
+        private void RandomizePosition()
+        {
+            float w = WarehouseConstants.WarehouseWidth;
+            float l = WarehouseConstants.WarehouseLength;
+
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                Vector3 randomPos = new Vector3(
+                    Random.Range(3f, w - 3f),
+                    0f,
+                    Random.Range(3f, l - 3f)
+                );
+
+                if (NavMesh.SamplePosition(randomPos, out NavMeshHit hit, 3f, NavMesh.AllAreas))
+                {
+                    if (navAgent != null)
+                    {
+                        navAgent.Warp(hit.position);
+                    }
+                    else
+                    {
+                        transform.position = hit.position + Vector3.up * (WarehouseConstants.RobotHeight / 2f);
+                    }
+                    return;
+                }
+            }
         }
 
         // ──────────────────────────────────────────────
@@ -194,70 +241,78 @@ namespace WarehouseSimulation.Agents
         /// </summary>
         public override void CollectObservations(VectorSensor sensor)
         {
-            float wNorm = WarehouseConstants.WarehouseWidth;
-            float lNorm = WarehouseConstants.WarehouseLength;
-
-            // ── 1. Robot position (normalized) [2 floats] ──
-            sensor.AddObservation(transform.position.x / wNorm);
-            sensor.AddObservation(transform.position.z / lNorm);
-
-            // ── 2. Target position (normalized) [2 floats] ──
-            sensor.AddObservation(currentTarget.x / wNorm);
-            sensor.AddObservation(currentTarget.z / lNorm);
-
-            // ── 3. Distance to target (normalized) [1 float] ──
-            float maxDist = Mathf.Sqrt(wNorm * wNorm + lNorm * lNorm);
-            float dist = Vector3.Distance(transform.position, currentTarget);
-            sensor.AddObservation(dist / maxDist);
-
-            // ── 4. Current velocity (normalized) [2 floats] ──
-            Vector3 velocity = navAgent != null ? navAgent.velocity : Vector3.zero;
-            sensor.AddObservation(velocity.x / WarehouseConstants.MaxSpeed);
-            sensor.AddObservation(velocity.z / WarehouseConstants.MaxSpeed);
-
-            // ── 5. Obstacle raycasts (8 directions, normalized distance) [8 floats] ──
-            // Cast rays in 8 directions to detect nearby obstacles
-            float rayDist = WarehouseConstants.RaycastDistance;
-            for (int i = 0; i < 8; i++)
+            try
             {
-                float angle = i * 45f;
-                Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
-                
-                if (Physics.Raycast(transform.position + Vector3.up * 0.5f, direction, out RaycastHit hit, rayDist))
+                float wNorm = WarehouseConstants.WarehouseWidth;
+                float lNorm = WarehouseConstants.WarehouseLength;
+
+                // ── 1. Robot position (normalized) [2 floats] ──
+                sensor.AddObservation(transform.position.x / wNorm);
+                sensor.AddObservation(transform.position.z / lNorm);
+
+                // ── 2. Target position (normalized) [2 floats] ──
+                sensor.AddObservation(currentTarget.x / wNorm);
+                sensor.AddObservation(currentTarget.z / lNorm);
+
+                // ── 3. Distance to target (normalized) [1 float] ──
+                float maxDist = Mathf.Sqrt(wNorm * wNorm + lNorm * lNorm);
+                float dist = Vector3.Distance(transform.position, currentTarget);
+                sensor.AddObservation(dist / maxDist);
+
+                // ── 4. Current velocity (normalized) [2 floats] ──
+                Vector3 velocity = navAgent != null ? navAgent.velocity : Vector3.zero;
+                sensor.AddObservation(velocity.x / WarehouseConstants.MaxSpeed);
+                sensor.AddObservation(velocity.z / WarehouseConstants.MaxSpeed);
+
+                // ── 5. Obstacle raycasts (8 directions, normalized distance) [8 floats] ──
+                float rayDist = WarehouseConstants.RaycastDistance;
+                for (int i = 0; i < 8; i++)
                 {
-                    sensor.AddObservation(hit.distance / rayDist); // Normalized: 0 = very close, 1 = far
+                    float angle = i * 45f;
+                    Vector3 direction = Quaternion.Euler(0, angle, 0) * Vector3.forward;
+                    
+                    if (Physics.Raycast(transform.position + Vector3.up * 0.5f, direction, out RaycastHit hit, rayDist))
+                    {
+                        sensor.AddObservation(hit.distance / rayDist);
+                    }
+                    else
+                    {
+                        sensor.AddObservation(1f);
+                    }
+                }
+
+                // ── 6. Task type (one-hot encoded) [2 floats] ──
+                if (currentTask != null)
+                {
+                    sensor.AddObservation(currentTask.Type == TaskType.OrderFulfillment ? 1f : 0f);
+                    sensor.AddObservation(currentTask.Type == TaskType.Restocking ? 1f : 0f);
                 }
                 else
                 {
-                    sensor.AddObservation(1f); // No obstacle detected
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
                 }
-            }
 
-            // ── 6. Task type (one-hot encoded) [2 floats] ──
-            if (currentTask != null)
-            {
-                sensor.AddObservation(currentTask.Type == TaskType.OrderFulfillment ? 1f : 0f);
-                sensor.AddObservation(currentTask.Type == TaskType.Restocking ? 1f : 0f);
-            }
-            else
-            {
-                sensor.AddObservation(0f);
-                sensor.AddObservation(0f);
-            }
+                // ── 7. Carrying item status [1 float] ──
+                sensor.AddObservation(isCarryingItem ? 1f : 0f);
 
-            // ── 7. Carrying item status [1 float] ──
-            sensor.AddObservation(isCarryingItem ? 1f : 0f);
-
-            // ── 8. Nearest robot info [3 floats] ──
-            if (coordinator != null)
-            {
-                var (nearestRobot, nearestDist) = coordinator.GetNearestRobot(transform.position, this);
-                if (nearestRobot != null)
+                // ── 8. Nearest robot info [3 floats] ──
+                if (coordinator != null)
                 {
-                    sensor.AddObservation(nearestDist / maxDist);
-                    Vector3 dirToRobot = (nearestRobot.transform.position - transform.position).normalized;
-                    sensor.AddObservation(dirToRobot.x);
-                    sensor.AddObservation(dirToRobot.z);
+                    var (nearestRobot, nearestDist) = coordinator.GetNearestRobot(transform.position, this);
+                    if (nearestRobot != null)
+                    {
+                        sensor.AddObservation(nearestDist / maxDist);
+                        Vector3 dirToRobot = (nearestRobot.transform.position - transform.position).normalized;
+                        sensor.AddObservation(dirToRobot.x);
+                        sensor.AddObservation(dirToRobot.z);
+                    }
+                    else
+                    {
+                        sensor.AddObservation(1f);
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                    }
                 }
                 else
                 {
@@ -265,15 +320,14 @@ namespace WarehouseSimulation.Agents
                     sensor.AddObservation(0f);
                     sensor.AddObservation(0f);
                 }
-            }
-            else
-            {
-                sensor.AddObservation(1f);
-                sensor.AddObservation(0f);
-                sensor.AddObservation(0f);
-            }
 
-            // Total observations: 2 + 2 + 1 + 2 + 8 + 2 + 1 + 3 = 21
+                // Total observations: 2 + 2 + 1 + 2 + 8 + 2 + 1 + 3 = 21
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[Robot {RobotIndex}] CollectObservations EXCEPTION: {e.Message}\n{e.StackTrace}");
+                // Can't easily pad to exact count, but the error message is what matters
+            }
         }
 
         // ──────────────────────────────────────────────
@@ -295,6 +349,37 @@ namespace WarehouseSimulation.Agents
         /// </summary>
         public override void OnActionReceived(ActionBuffers actions)
         {
+            // ── DIAGNOSTIC: Log step count periodically for Robot 0 ──
+            if (RobotIndex == 0 && StepCount % 200 == 0)
+            {
+                Debug.Log($"[Robot 0] StepCount={StepCount}, MaxStep={MaxStep}, isInteracting={isInteracting}, hasTask={currentTask != null}");
+            }
+
+            // ══════════════════════════════════════════════
+            // EPISODE TERMINATION — MUST run before any early returns!
+            // ══════════════════════════════════════════════
+
+            // ── Episode time limit (failsafe — 60 sim seconds) ──
+            float episodeElapsed = Time.time - episodeStartTime;
+            if (episodeElapsed > 60f)
+            {
+                Debug.Log($"[Robot {RobotIndex}] TIME LIMIT (60s sim). StepCount={StepCount}. Ending episode.");
+                AddReward(-2f);
+                EndEpisode();
+                return;
+            }
+
+            // ── Episode step limit ──
+            if (StepCount >= WarehouseConstants.MaxEpisodeSteps)
+            {
+                Debug.Log($"[Robot {RobotIndex}] MAX STEPS reached ({StepCount}). Ending episode.");
+                AddReward(-2f);
+                EndEpisode();
+                return;
+            }
+
+            // ══════════════════════════════════════════════
+
             if (isInteracting) return; // Don't move during pick/delivery
 
             // ── Extract actions ──
@@ -336,6 +421,10 @@ namespace WarehouseSimulation.Agents
             // ── Calculate rewards ──
             CalculateStepRewards();
 
+            // ── Proximity-based collision detection ──
+            // (OnCollisionEnter doesn't work with kinematic Rigidbodies + NavMeshAgent)
+            CheckProximityCollisions();
+
             // ── Check for task interactions ──
             CheckInteractions();
 
@@ -353,14 +442,6 @@ namespace WarehouseSimulation.Agents
             // ── Update state and visuals ──
             UpdateState();
             UpdateVisuals();
-
-            // ── Episode step limit ──
-            if (StepCount >= WarehouseConstants.MaxEpisodeSteps)
-            {
-                // Penalize for not completing in time
-                AddReward(-2f);
-                EndEpisode();
-            }
         }
 
         /// <summary>
@@ -592,9 +673,9 @@ namespace WarehouseSimulation.Agents
             isInteracting = false;
             UpdateVisuals();
 
-            // In training mode, end episode after task completion for faster learning
-            // In inference mode, the robot continues to accept new tasks
-            // EndEpisode(); // Uncomment for faster training convergence
+            // End episode after task completion so PPO can compute proper returns
+            Debug.Log($"[Robot {RobotIndex}] TASK COMPLETED. Ending episode. Reward={GetCumulativeReward():F2}");
+            EndEpisode();
         }
 
         // ──────────────────────────────────────────────
@@ -672,28 +753,49 @@ namespace WarehouseSimulation.Agents
         }
 
         // ──────────────────────────────────────────────
-        // COLLISION HANDLING
+        // COLLISION HANDLING (Proximity-based)
         // ──────────────────────────────────────────────
 
+        private float lastCollisionCheckTime;
+        private const float CollisionCheckInterval = 0.2f; // Check 5x/sec to save perf
+        private const float RobotCollisionRadius = 1.2f;   // Slightly larger than physical radius
+
         /// <summary>
-        /// Handles physical collisions. Provides negative rewards for the RL agent
-        /// to learn collision avoidance behavior.
+        /// Proximity-based collision detection since kinematic Rigidbodies + NavMeshAgent
+        /// don't trigger OnCollisionEnter reliably. Checks distance to nearby robots
+        /// and obstacles, applying penalties when too close.
         /// </summary>
-        private void OnCollisionEnter(Collision collision)
+        private void CheckProximityCollisions()
         {
-            if (collision.gameObject.CompareTag("Robot"))
+            if (Time.time - lastCollisionCheckTime < CollisionCheckInterval) return;
+            lastCollisionCheckTime = Time.time;
+
+            // Check robot-to-robot proximity
+            if (coordinator != null)
             {
-                // Collision with another robot — strong negative reward
-                AddReward(WarehouseConstants.PenaltyRobotCollision);
-                collisionCount++;
-                Debug.LogWarning($"[Robot {RobotIndex}] Collision with robot!");
+                var (nearestRobot, nearestDist) = coordinator.GetNearestRobot(transform.position, this);
+                if (nearestRobot != null && nearestDist < RobotCollisionRadius)
+                {
+                    AddReward(WarehouseConstants.PenaltyRobotCollision);
+                    collisionCount++;
+                }
             }
-            else if (collision.gameObject.CompareTag("Obstacle") || 
-                     collision.gameObject.CompareTag("Shelf"))
+
+            // Check obstacle proximity via short raycasts
+            float checkDist = WarehouseConstants.RobotRadius + 0.3f;
+            Vector3 origin = transform.position + Vector3.up * 0.5f;
+            for (int i = 0; i < 4; i++)
             {
-                // Collision with wall/shelf — moderate negative reward
-                AddReward(WarehouseConstants.PenaltyObstacleCollision);
-                collisionCount++;
+                Vector3 dir = Quaternion.Euler(0, i * 90f, 0) * Vector3.forward;
+                if (Physics.Raycast(origin, dir, out RaycastHit hit, checkDist))
+                {
+                    if (hit.collider.CompareTag("Obstacle") || hit.collider.CompareTag("Shelf"))
+                    {
+                        AddReward(WarehouseConstants.PenaltyObstacleCollision * 0.1f); // Scaled per-check
+                        collisionCount++;
+                        break; // One penalty per check interval
+                    }
+                }
             }
         }
 
