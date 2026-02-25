@@ -245,18 +245,22 @@ namespace WarehouseSimulation.Agents
             {
                 float wNorm = WarehouseConstants.WarehouseWidth;
                 float lNorm = WarehouseConstants.WarehouseLength;
+                
+                // Safe target
+                Vector3 safeTarget = currentTarget;
+                if (currentTask == null) safeTarget = transform.position;
 
                 // ── 1. Robot position (normalized) [2 floats] ──
                 sensor.AddObservation(transform.position.x / wNorm);
                 sensor.AddObservation(transform.position.z / lNorm);
 
                 // ── 2. Target position (normalized) [2 floats] ──
-                sensor.AddObservation(currentTarget.x / wNorm);
-                sensor.AddObservation(currentTarget.z / lNorm);
+                sensor.AddObservation(safeTarget.x / wNorm);
+                sensor.AddObservation(safeTarget.z / lNorm);
 
                 // ── 3. Distance to target (normalized) [1 float] ──
                 float maxDist = Mathf.Sqrt(wNorm * wNorm + lNorm * lNorm);
-                float dist = Vector3.Distance(transform.position, currentTarget);
+                float dist = Vector3.Distance(transform.position, safeTarget);
                 sensor.AddObservation(dist / maxDist);
 
                 // ── 4. Current velocity (normalized) [2 floats] ──
@@ -326,7 +330,9 @@ namespace WarehouseSimulation.Agents
             catch (System.Exception e)
             {
                 Debug.LogError($"[Robot {RobotIndex}] CollectObservations EXCEPTION: {e.Message}\n{e.StackTrace}");
-                // Can't easily pad to exact count, but the error message is what matters
+                
+                // Failsafe padding to guarantee 21 observations and prevent Python crash
+                for (int i = 0; i < 21; i++) { sensor.AddObservation(0f); }
             }
         }
 
