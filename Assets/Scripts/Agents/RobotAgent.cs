@@ -244,6 +244,14 @@ namespace WarehouseSimulation.Agents
         /// </summary>
         public override void CollectObservations(VectorSensor sensor)
         {
+            // Fallback: if any crucial reference is null, send safe zeros and log the EXACT cause
+            if (navAgent == null || coordinator == null || currentTask == null)
+            {
+                Debug.LogError($"[Robot {RobotIndex}] NULL ref in CollectObservations. navAgent={navAgent != null}, coordinator={coordinator != null}, currentTask={currentTask != null}");
+                for (int i = 0; i < 21; i++) sensor.AddObservation(0f);
+                return;
+            }
+
             try
             {
                 float wNorm = WarehouseConstants.WarehouseWidth;

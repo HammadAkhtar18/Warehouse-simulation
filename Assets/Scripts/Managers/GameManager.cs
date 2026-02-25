@@ -52,7 +52,7 @@ namespace WarehouseSimulation.Managers
 
         [Header("Simulation Settings")]
         [SerializeField] private int robotCount = WarehouseConstants.DefaultRobotCount;
-        [SerializeField] private float timeScale = 20f; // 20x speed for training
+        [SerializeField] private float timeScale = 5f; // 5x speed for stable training without Python timeouts
         [SerializeField] private Core.SimulationMode simulationMode = Core.SimulationMode.Inference;
 
         [Header("Robot Prefab")]
