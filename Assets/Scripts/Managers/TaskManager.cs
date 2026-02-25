@@ -84,6 +84,12 @@ namespace WarehouseSimulation.Managers
 
             nextOrderTime = Time.time + orderInterval;
 
+            // Pre-generate tasks so initial episodes aren't empty
+            for (int i = 0; i < 15; i++)
+            {
+                GenerateRandomOrder();
+            }
+
             Debug.Log("[TaskManager] Initialized");
         }
 
@@ -277,7 +283,13 @@ namespace WarehouseSimulation.Managers
         /// </summary>
         public void RequestTaskForRobot(RobotAgent robot)
         {
-            if (pendingTasks.Count == 0) return;
+            // If the queue is empty when a robot needs a task, generate one immediately
+            if (pendingTasks.Count == 0) 
+            {
+                GenerateRandomOrder();
+            }
+
+            if (pendingTasks.Count == 0) return; // Fallback just in case
             if (robot.CurrentTask != null) return;
 
             // Find nearest pending task

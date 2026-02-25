@@ -107,7 +107,7 @@ namespace WarehouseSimulation.Core
         public const float RewardPickup = 2f;                // Reward for reaching pickup point
         
         /// <summary>Maximum episode length for ML training (steps).</summary>
-        public const int MaxEpisodeSteps = 1000;
+        public const int MaxEpisodeSteps = 5000;
 
         // ──────────────────────────────────────────────
         // OBSERVATION SPACE PARAMETERS

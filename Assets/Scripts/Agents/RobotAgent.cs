@@ -355,30 +355,8 @@ namespace WarehouseSimulation.Agents
                 Debug.Log($"[Robot 0] StepCount={StepCount}, MaxStep={MaxStep}, isInteracting={isInteracting}, hasTask={currentTask != null}");
             }
 
-            // ══════════════════════════════════════════════
-            // EPISODE TERMINATION — MUST run before any early returns!
-            // ══════════════════════════════════════════════
-
-            // ── Episode time limit (failsafe — 60 sim seconds) ──
-            float episodeElapsed = Time.time - episodeStartTime;
-            if (episodeElapsed > 60f)
-            {
-                Debug.Log($"[Robot {RobotIndex}] TIME LIMIT (60s sim). StepCount={StepCount}. Ending episode.");
-                AddReward(-2f);
-                EndEpisode();
-                return;
-            }
-
-            // ── Episode step limit ──
-            if (StepCount >= WarehouseConstants.MaxEpisodeSteps)
-            {
-                Debug.Log($"[Robot {RobotIndex}] MAX STEPS reached ({StepCount}). Ending episode.");
-                AddReward(-2f);
-                EndEpisode();
-                return;
-            }
-
-            // ══════════════════════════════════════════════
+            // MaxStep now natively handles episode step limits, and we removed the 60s wall-clock failsafe
+            // so robots won't end their episodes prematurely before finishing tasks.
 
             if (isInteracting) return; // Don't move during pick/delivery
 
@@ -673,9 +651,12 @@ namespace WarehouseSimulation.Agents
             isInteracting = false;
             UpdateVisuals();
 
-            // End episode after task completion so PPO can compute proper returns
-            Debug.Log($"[Robot {RobotIndex}] TASK COMPLETED. Ending episode. Reward={GetCumulativeReward():F2}");
-            EndEpisode();
+            // Chain tasks instead of ending the episode!
+            Debug.Log($"[Robot {RobotIndex}] TASK COMPLETED. Requesting next task.");
+            if (taskManager != null)
+            {
+                taskManager.RequestTaskForRobot(this);
+            }
         }
 
         // ──────────────────────────────────────────────
